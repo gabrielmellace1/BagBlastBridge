@@ -6,28 +6,50 @@ let accounts, tokenContractETH, tokenContractBlast, bridgeContract, web3Blast;
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("Document loaded. Initializing...");
-    await init();
-    await updateBalanceETH();
-    await updateBalanceBlast();
-    await updateAllowance();
+    try {
+        await init();
+        await updateBalanceETH();
+        await updateBalanceBlast();
+        await updateAllowance();
+        attachEventListeners();
+    } catch (error) {
+        console.error("Initialization failed:", error);
+    }
 });
 
+function attachEventListeners() {
+   
 
-document.getElementById('maxButton').addEventListener('click', () => {
-    const maxBalance = document.getElementById('tokenBalanceETH').innerText;
-    document.getElementById('amountToBridge').value = maxBalance;
-    updateButtonStates(); // Make sure this function updates the state of the buttons based on the new input value
-});
+    document.getElementById('approveButton').addEventListener('click', async () => {
+        const amountToBridgeETH = document.getElementById('amountToBridge').value;
+        const amountToBridgeWEI = web3.utils.toWei(amountToBridgeETH, 'ether');
+        console.log("Approving...", amountToBridgeWEI);
+        try {
+            await tokenContractETH.methods.approve(bridgeContractAddress, amountToBridgeWEI).send({ from: accounts[0] });
+            await updateAllowance();
+        } catch (error) {
+            console.error("Error during approval:", error);
+        }
+    });
 
+    document.getElementById('bridgeButton').addEventListener('click', async () => {
+        const amountToBridgeETH = document.getElementById('amountToBridge').value;
+        const amountToBridgeWEI = web3.utils.toWei(amountToBridgeETH, 'ether');
+        console.log("Bridging...", amountToBridgeWEI);
+        try {
+            await bridgeContract.methods.bridgeERC20(tokenContractAddressETH, tokenContractAddressBlast, amountToBridgeWEI, '750000', '0x').send({ from: accounts[0] });
+        } catch (error) {
+            console.error("Error during bridging:", error);
+        }
+    });
+}
 
 async function init() {
     if (window.ethereum) {
         window.web3 = new Web3(window.ethereum);
         web3Blast = new Web3(new Web3.providers.HttpProvider(blastRPC));
         try {
-            console.log("Requesting account access...");
             accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            console.log("Accounts received:", accounts);
             const tokenABI = await fetch('tokenABI.json').then(response => response.json());
             tokenContractETH = new web3.eth.Contract(tokenABI, tokenContractAddressETH);
             tokenContractBlast = new web3Blast.eth.Contract(tokenABI, tokenContractAddressBlast);
@@ -35,7 +57,7 @@ async function init() {
             bridgeContract = new web3.eth.Contract(bridgeABI, bridgeContractAddress);
             console.log("Contracts initialized.");
         } catch (error) {
-            console.error("Could not get accounts", error);
+            console.error("Could not get accounts or contracts initialized", error);
         }
     } else {
         console.error('MetaMask is not installed!');
@@ -44,63 +66,36 @@ async function init() {
 }
 
 async function updateBalanceETH() {
-    console.log("Updating ETH balance...");
     const balance = await tokenContractETH.methods.balanceOf(accounts[0]).call();
     document.getElementById('tokenBalanceETH').innerText = web3.utils.fromWei(balance, 'ether');
-    console.log("ETH Balance updated:", balance);
 }
 
 async function updateBalanceBlast() {
-    console.log("Updating Blast balance...");
-    // Assuming the account address format is compatible with Blast; otherwise, additional steps may be needed.
     const balance = await tokenContractBlast.methods.balanceOf(accounts[0]).call();
     document.getElementById('tokenBalanceBlast').innerText = web3Blast.utils.fromWei(balance, 'ether');
-    console.log("Blast Balance updated:", balance);
 }
 
 async function updateAllowance() {
-    console.log("Updating allowance...");
     const allowance = await tokenContractETH.methods.allowance(accounts[0], bridgeContractAddress).call();
-    //document.getElementById('allowance').innerText = web3.utils.fromWei(allowance, 'ether');
-    console.log("Allowance updated:", allowance);
+    console.log(allowance);
     updateButtonStates();
 }
 
 async function updateButtonStates() {
-    console.log("Updating button states...");
     const amountToBridgeETH = document.getElementById('amountToBridge').value || "0";
     const amountToBridgeWEI = web3.utils.toWei(amountToBridgeETH, 'ether');
-    console.log("Amount to bridge in WEI:", amountToBridgeWEI);
+    console.log(amountToBridgeWEI);
     const allowanceWEI = await tokenContractETH.methods.allowance(accounts[0], bridgeContractAddress).call();
-    console.log("Current allowance in WEI:", allowanceWEI);
+    console.log(allowanceWEI);
 
     if (BigInt(amountToBridgeWEI) > 0n && BigInt(allowanceWEI) >= BigInt(amountToBridgeWEI)) {
-        console.log("Enabling bridge button, disabling approve button.");
         document.getElementById('approveButton').disabled = true;
         document.getElementById('bridgeButton').disabled = false;
     } else if (BigInt(amountToBridgeWEI) > 0n) {
-        console.log("Enabling approve button, disabling bridge button.");
         document.getElementById('approveButton').disabled = false;
         document.getElementById('bridgeButton').disabled = true;
     } else {
-        console.log("Disabling both buttons.");
         document.getElementById('approveButton').disabled = true;
         document.getElementById('bridgeButton').disabled = true;
     }
 }
-
-document.getElementById('approveButton').addEventListener('click', async () => {
-    const amountToBridgeETH = document.getElementById('amountToBridge').value;
-    const amountToBridgeWEI = web3.utils.toWei(amountToBridgeETH, 'ether');
-    console.log("Approving...", amountToBridgeWEI);
-    await tokenContractETH.methods.approve(bridgeContractAddress, amountToBridgeWEI).send({ from: accounts[0] });
-    await updateAllowance();
-});
-
-document.getElementById('bridgeButton').addEventListener('click', async () => {
-    const amountToBridgeETH = document.getElementById('amountToBridge').value;
-    const amountToBridgeWEI = web3.utils.toWei(amountToBridgeETH, 'ether');
-    console.log("Bridging...", amountToBridgeWEI);
-    await bridgeContract.methods.bridgeERC20(tokenContractAddressETH, tokenContractAddressBlast, amountToBridgeWEI, '750000', '0x').send({ from: accounts[0] });
-    // After bridging, you might want to update balances or perform other actions
-});
